@@ -8,9 +8,10 @@ import time
 import logging
 import csv
 from typing import List, Dict
+from utils import *
 
 logger = logging.getLogger(__name__)
-logging.basicConfig(filename=os.path.curdir + "/deed_scraper.log", format='%(asctime)s %(message)s', encoding='utf-8', level=logging.INFO)
+logging.basicConfig(filename=os.path.curdir + "/scraper.log", format='%(asctime)s %(message)s', encoding='utf-8', level=logging.INFO)
 
 class Scraper:
     def __init__(self):
@@ -40,19 +41,6 @@ class Scraper:
                 writer = csv.writer(file)
                 writer.writerow(headers)
 
-
-    def _make_snake_case(self, s: str) -> str:
-        '''Converts a given string to snake_case
-        
-        Parameters: 
-            s (str): An input string
-        
-        Returns: 
-            A string in snake_case
-        '''
-        s = [char if char != " " else "_" for char in s]
-        return "".join(s).lower()
-
     def _clean_pin(self, pin: str) -> str:
         '''Cleans a Property Identification Number (PIN) value so that it can be used in the base URLs.
 
@@ -66,18 +54,6 @@ class Scraper:
         pin = "".join(filter(str.isdigit, pin))
         assert len(pin) == 14, "pin value must evaluate to a string of numeric digits of length 14"
         return pin
-    
-    def _remove_duplicates(self, urls: List[str]) -> List[str]:
-        '''Removes duplicate values from a list object.
-
-        Parameters:
-            urls (List[str]): A list of strings.
-
-        Returns:
-            A list of unique strings.
-        '''
-        urls = list(set(urls))
-        return urls
 
     def get_pin_docs(self, pin: str):
         '''Runs the scraping process for a given PIN.
@@ -124,7 +100,7 @@ class Scraper:
             collected_urls.append(view_urls)
         
         collected_urls = [item for sublist in collected_urls for item in sublist]
-        collected_urls = self._remove_duplicates(collected_urls)
+        collected_urls = remove_duplicates(collected_urls)
         self.data[pin]['doc_urls'] = collected_urls
         logger.info(str(len(collected_urls)) + " document urls collected")
         return collected_urls
@@ -147,13 +123,13 @@ class Scraper:
         doc_info_table = soup.fieldset.table.find_all("tr")
         for record in doc_info_table:
             key = record.th.label.string.strip(":")
-            key = self._make_snake_case(key)
+            key = make_snake_case(key)
             value = record.td.string
             metadata[key] = value
         if not metadata.get('consideration_amount'): # some docs don't have this field
             metadata['consideration_amount'] = ''
         metadata['pin'] = pin
-        # TODO: metadata missing grantor and grantee information found on same page at given url
+        # TODO: metadata is missing grantor and grantee information found on same page at given url
         logger.info(f"Successfully extracted metadata for {pin}, document {metadata['document_number']}")
         return metadata
 
@@ -166,6 +142,7 @@ class Scraper:
         Returns:
             None
         '''
+        # TODO: Check that the files being written aren't already in the docs_metadata.csv file, right now the CSV is getting appended with duplicates if you run the Scraper on the same property
         df = pd.DataFrame(metadata, index=[metadata['document_number']])
         df.to_csv(self.metadata_dir, mode='a', header=False, index=False)
 
@@ -221,6 +198,6 @@ class Scraper:
         assert os.path.exists(path), logger.error(f"Download was not successful to {path}")
             
 if __name__ == "__main__":
-    pin_to_pull = "16-10-421-053-0000"
+    pin_to_pull = "16-10-421-053-0000" # Hotel Guyon
     scraper = Scraper()
     scraper.get_pin_docs(pin_to_pull)
