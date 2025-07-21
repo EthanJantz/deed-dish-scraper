@@ -221,6 +221,7 @@ class Scraper:
                         os.path.dirname(path)}")
         if os.path.exists(path):
             logger.info(f"{path} already exists, skipping")
+            self.data[pin]['docs'][doc_num]['pdf_path'] = path
             return
 
         logger.info(f"Downloading file at {url}...")
@@ -248,7 +249,7 @@ class Scraper:
             if not self.data[pin]['docs'][doc].get(key):
                 key = 'doc_page_' + key
                 self.data[pin]['docs'][doc][key] = value
-                # TODO: This creates duplicate data entires
+                # TODO: This creates duplicate data entire
 
     def main(self):
         self.initialize_data_directory()
