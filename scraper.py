@@ -89,7 +89,7 @@ class Scraper:
         """
         # TODO: Add validation of PIN by checking website
         clean_pin = self.clean_pin(pin)
-        self.data[clean_pin] = {"docs": {}, "properties": {}}
+        self.data[clean_pin] = {"docs": {}}
 
     def collect_doc_metadata(self, pin: str) -> list[dict[str]]:
         """
@@ -251,21 +251,31 @@ class Scraper:
                 self.data[pin]['docs'][doc][key] = value
                 # TODO: This creates duplicate data entire
 
-    def main(self):
+    def scrape(self, pins: list[str] | str):
         self.initialize_data_directory()
 
-        # pin = "16-10-421-053-0000" # Hotel Guyon
-        # pin = "17-05-115-085-0000"  # Starsiak Clothing
-        pin = "17-29-304-001-0000"
-        pin = self.clean_pin(pin)
-        self.initialize_pin(pin)
-        pin_doc_metadata = self.collect_doc_metadata(pin)
+        if not pins:
+            pins = ["17-29-304-001-0000",  # Park
+                    "17-05-115-085-0000",  # Starsiak Clothing
+                    "16-10-421-053-0000"]  # Hotel Guyon
 
-        for doc in pin_doc_metadata:
-            doc_num = doc.pop('doc_number', None)
-            self.data[pin]['docs'][doc_num] = doc
+        if not isinstance(pins, list):
+            assert isinstance(
+                pins, str), "pins must be a list of stings or a string"
+        else:
+            assert all([isinstance(pin) for pin in pins]
+                       ), "all pins must be string values"
 
-        self.extract_from_doc_urls()
+        for pin in pins:
+            pin = self.clean_pin(pin)
+            self.initialize_pin(pin)
+            pin_doc_metadata = self.collect_doc_metadata(pin)
+
+            for doc in pin_doc_metadata:
+                doc_num = doc.pop('doc_number', None)
+                self.data[pin]['docs'][doc_num] = doc
+
+            self.extract_from_doc_urls()
 
         out_path = self.data_dir + '/metadata.json'
         with open(out_path, 'w') as file:
@@ -274,4 +284,4 @@ class Scraper:
 
 if __name__ == "__main__":
     s = Scraper()
-    s.main()
+    s.scrape()
