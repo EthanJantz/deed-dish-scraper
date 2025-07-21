@@ -1,8 +1,11 @@
+'''
+Creates a Postgres database and tables if they don't exist.
+Loads the data from ~/data/metadata.json into the database.
+'''
 import sys
 import json
 import os
 from datetime import datetime
-from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
 from logger import logging
 
@@ -13,8 +16,6 @@ logging.basicConfig(
     encoding="utf-8",
     level=logging.INFO,
 )
-
-load_dotenv()
 
 DATABASE_NAME = "recordings"
 DATABASE_URL = f"postgresql://ethan@localhost/{DATABASE_NAME}"
@@ -241,7 +242,7 @@ def insert_data(engine, data: dict):
                             'doc_num': doc_num,
                             'pin': pin,
                             'entity_name': grantor.get('name', ''),
-                            'entity_status': 'grantor',
+                            'entity_status': 'grantee',
                             'trust_number': grantor.get('trust_number')
                         })
 
