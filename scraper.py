@@ -134,18 +134,26 @@ class Scraper:
         '''
         for pin in self.data:
             for doc in self.data[pin]['docs']:
-                response = requests.get(self.data[pin]['docs'][doc]['url'])
-                soup = BeautifulSoup(response.text, features='lxml')
-                tag = soup.find("a", href=re.compile("/Document/DisplayPdf"))
-                pdf_url = self.base_url + tag.get("href")
-                self.data[pin]['docs'][doc]['pdf_url'] = pdf_url
-                self.download_pdf(pdf_url, pin, doc)
+                url = self.data[pin]['docs'][doc]['url']
+                try:
+                    response = requests.get(url)
+                    assert response.status_code == 200
 
-                info_table = soup.fieldset.table.find_all('tr')
-                self.extract_info_table(info_table, pin, doc)
+                    soup = BeautifulSoup(response.text, features='lxml')
+                    tag = soup.find("a", href=re.compile(
+                        "/Document/DisplayPdf"))
+                    pdf_url = self.base_url + tag.get("href")
+                    self.data[pin]['docs'][doc]['pdf_url'] = pdf_url
+                    self.download_pdf(pdf_url, pin, doc)
 
-                entities = self.extract_grantor_grantee_tables(soup)
-                self.data[pin]['docs'][doc]['entities'] = entities
+                    info_table = soup.fieldset.table.find_all('tr')
+                    self.extract_info_table(info_table, pin, doc)
+
+                    entities = self.extract_grantor_grantee_tables(soup)
+                    self.data[pin]['docs'][doc]['entities'] = entities
+                except AssertionError as e:
+                    logger.error(
+                        f"Document URL at {url} returned status code {response.status_code}, skipping...")
 
     def extract_grantor_grantee_tables(self, soup: BeautifulSoup):
         """
@@ -226,13 +234,16 @@ class Scraper:
 
         logger.info(f"Downloading file at {url}...")
         response = requests.get(url)
-        with open(path, "wb") as file:
-            file.write(response.content)
-            self.data[pin]['docs'][doc_num]['pdf_path'] = path
-        assert os.path.exists(path), logger.error(
-            f"Download from {url} was not successful to {path}"
-        )
-        logger.info(f"Document saved to {path}")
+        try:
+            assert response.status_code == 200
+            with open(path, "wb") as file:
+                file.write(response.content)
+                self.data[pin]['docs'][doc_num]['pdf_path'] = path
+            logger.info(f"Document saved to {path}")
+
+        except AssertionError as e:
+            logger.error(f"Request to {url} responded with code {
+                         response.stauts_code}, skipping")
 
     def extract_info_table(self,
                            info_table: BeautifulSoup,
@@ -263,7 +274,7 @@ class Scraper:
             assert isinstance(
                 pins, str), "pins must be a list of stings or a string"
         else:
-            assert all([isinstance(pin) for pin in pins]
+            assert all([isinstance(pin, str) for pin in pins]
                        ), "all pins must be string values"
 
         for pin in pins:
@@ -284,4 +295,4 @@ class Scraper:
 
 if __name__ == "__main__":
     s = Scraper()
-    s.scrape()
+    s.scrape(None)
