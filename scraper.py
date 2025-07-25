@@ -1,11 +1,19 @@
-import pandas as pd
-import requests
-from bs4 import BeautifulSoup
+"""
+Defines the scraper object, which takes a set of PIN values
+and downloads all of the documents from the Cook County Recorder
+related to that PIN
+"""
+import json
 import re
 import os
+import time
 from io import StringIO
-import logging
-import json
+import pandas as pd
+import requests
+from dotenv import load_dotenv
+from bs4 import BeautifulSoup
+from logger import logging
+from sqlalchemy import create_engine, text
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(
@@ -15,8 +23,27 @@ logging.basicConfig(
     level=logging.INFO,
 )
 
+load_dotenv()
+DATABASE_NAME = os.getenv("DB_NAME")
+DATABASE_USER = os.getenv("DB_USER")
+DATABASE_PASSWORD = os.getenv("DB_PASSWORD")
+
+def set_host():
+    """
+    Sets hostname based on environment
+    """
+    if os.path.exists('/.dockerenv'):
+        return 'postgres'  # Container name
+
+    return 'localhost'  # Local development
+DB_HOST = set_host()
+
+DATABASE_URL = f"postgresql://{DATABASE_USER}:{DATABASE_PASSWORD}@{DB_HOST}/{DATABASE_NAME}"
 
 class Scraper:
+    '''
+    Scrapes the Cook County Recorder's website for property information
+    '''
 
     def __init__(self):
         self.base_url: str = "https://crs.cookcountyclerkil.gov"
@@ -137,7 +164,8 @@ class Scraper:
                 url = self.data[pin]['docs'][doc]['url']
                 try:
                     response = requests.get(url)
-                    assert response.status_code == 200
+                    assert response.status_code == 200, f"Document URL at {
+                        url} returned status code {response.status_code}, skipping..."
 
                     soup = BeautifulSoup(response.text, features='lxml')
                     tag = soup.find("a", href=re.compile(
@@ -152,8 +180,7 @@ class Scraper:
                     entities = self.extract_grantor_grantee_tables(soup)
                     self.data[pin]['docs'][doc]['entities'] = entities
                 except AssertionError as e:
-                    logger.error(
-                        f"Document URL at {url} returned status code {response.status_code}, skipping...")
+                    logger.error(e)
 
     def extract_grantor_grantee_tables(self, soup: BeautifulSoup):
         """
@@ -235,15 +262,16 @@ class Scraper:
         logger.info(f"Downloading file at {url}...")
         response = requests.get(url)
         try:
-            assert response.status_code == 200
+            assert response.status_code == 200, f"Request to {
+                url} responded with code {response.stauts_code}, skipping"
+
             with open(path, "wb") as file:
                 file.write(response.content)
                 self.data[pin]['docs'][doc_num]['pdf_path'] = path
             logger.info(f"Document saved to {path}")
 
         except AssertionError as e:
-            logger.error(f"Request to {url} responded with code {
-                         response.stauts_code}, skipping")
+            logger.error(e)
 
     def extract_info_table(self,
                            info_table: BeautifulSoup,
@@ -260,15 +288,24 @@ class Scraper:
             if not self.data[pin]['docs'][doc].get(key):
                 key = 'doc_page_' + key
                 self.data[pin]['docs'][doc][key] = value
-                # TODO: This creates duplicate data entire
+                # TODO: This creates duplicate data entries
 
     def scrape(self, pins: list[str] | str):
+        """
+        The main function call for Scraper
+        Contains logic for initializing the data directory 
+        and handles the scraping, ingestion, and transformation 
+        of scraped data. 
+
+        Outputs data to the data directory with PDFs and 
+        associated metadata. 
+        """
         self.initialize_data_directory()
 
         if not pins:
-            pins = ["17-29-304-001-0000",  # Park
-                    "17-05-115-085-0000",  # Starsiak Clothing
-                    "16-10-421-053-0000"]  # Hotel Guyon
+            pins = ["17-29-304-001-0000"]#,  # Park
+                   # "17-05-115-085-0000",  # Starsiak Clothing
+                   # "16-10-421-053-0000"]  # Hotel Guyon
 
         if not isinstance(pins, list):
             assert isinstance(
@@ -278,6 +315,9 @@ class Scraper:
                        ), "all pins must be string values"
 
         for pin in pins:
+            time.sleep(5)
+            logger.info(f"Starting {pin}...")
+            time_x = time.time()
             pin = self.clean_pin(pin)
             self.initialize_pin(pin)
             pin_doc_metadata = self.collect_doc_metadata(pin)
@@ -287,12 +327,32 @@ class Scraper:
                 self.data[pin]['docs'][doc_num] = doc
 
             self.extract_from_doc_urls()
+            time_y = time.time()
+            logger.info(f"Completed {pin} in {time_x - time_y} seconds")
 
         out_path = self.data_dir + '/metadata.json'
         with open(out_path, 'w') as file:
             json.dump(self.data, file, indent=4, sort_keys=True)
 
+def get_pin_list():
+    """
+    Pull the PIN list using an on-disk SQL query
+    """
+    sql_file_path = 'vacant_bldg_query.sql'
+    with open(sql_file_path, 'r') as file:
+        sql_query = file.read()
+
+    engine = create_engine(DATABASE_URL)
+    with engine.connect() as connection:
+        result = connection.execute(text(sql_query))
+
+        rows = result.fetchall()
+        list_list = [list(row) for row in rows]
+
+        return list_list
 
 if __name__ == "__main__":
     s = Scraper()
-    s.scrape(None)
+    pins = [pin[0] for pin in get_pin_list()]
+    pins = pins[0:10]
+    s.scrape(pins)
