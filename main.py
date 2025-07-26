@@ -37,7 +37,7 @@ def main():
 
     s = Scraper()
     pins = []
-    path = 'data/vacant_bldg_pins.csv'
+    path = 'data/pins.csv'
 
     with open(path, 'r', newline='') as file:
         for row in csv.reader(file, delimiter=' '):

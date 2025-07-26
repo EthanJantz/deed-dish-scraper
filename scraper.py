@@ -329,7 +329,7 @@ class Scraper:
 if __name__ == "__main__":
     s = Scraper()
     pins = []
-    path = 'vacant_bldg_pins.csv'
+    path = 'pins.csv'
     with open(path, 'r', newline='') as file:
         for row in csv.reader(file, delimiter=' '):
             pins.append(''.join(row).strip(' '))
