@@ -18,27 +18,36 @@ logging.basicConfig(
 
 load_dotenv()
 
-DATABASE_NAME = os.getenv("DB_NAME")
-DATABASE_USER = os.getenv("DB_USER")
-DATABASE_PASSWORD = os.getenv("DB_PASSWORD")
-
-def set_host():
-    """
-    Sets hostname based on environment
-    """
+def get_db_config():
+    """Get database configuration based on environment"""
     if os.path.exists('/.dockerenv'):
-        return 'postgres'  # Container name
+        db_host = 'postgres'
+        db_port = 5432
+    else:
+        db_host = 'localhost'
+        db_port = 5433
 
-    return 'localhost'  # Local development
+    return {
+        'host': db_host,
+        'port': db_port,
+        'user': os.getenv('DB_USER', 'myuser'),
+        'password': os.getenv('DB_PASSWORD', 'mypassword'),
+        'database': os.getenv('DB_NAME', 'myapp')
+    }
 
-DB_HOST = set_host()
-DATABASE_URL = f"postgresql://{DATABASE_USER}:{DATABASE_PASSWORD}@{DB_HOST}/{DATABASE_NAME}"
+db_config = get_db_config()
+DB_HOST = db_config['host']
+DB_PORT = db_config['port']
+DATABASE_USER = db_config['user']
+DATABASE_PASSWORD = db_config['password']
+DATABASE_NAME = db_config['database']
+DATABASE_URL = f"postgresql://{DATABASE_USER}:{DATABASE_PASSWORD}@{DB_HOST}:{DB_PORT}/{DATABASE_NAME}"
 
 def create_database():
     """Create the database if it doesn't exist"""
 
     try:
-        admin_url = "postgresql://ethan@localhost/postgres"
+        admin_url = f"postgresql://{DATABASE_USER}:{DATABASE_PASSWORD}@{DB_HOST}/postgres"
         engine = create_engine(admin_url, isolation_level="AUTOCOMMIT")
 
         with engine.connect() as conn:

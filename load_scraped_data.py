@@ -16,24 +16,32 @@ logging.basicConfig(
     encoding="utf-8",
     level=logging.INFO,
 )
-
 load_dotenv()
 
-DATABASE_NAME = os.getenv("DB_NAME")
-DATABASE_USER = os.getenv("DB_USER")
-DATABASE_PASSWORD = os.getenv("DB_PASSWORD")
-
-def set_host():
-    """
-    Sets hostname based on environment
-    """
+def get_db_config():
+    """Get database configuration based on environment"""
     if os.path.exists('/.dockerenv'):
-        return 'postgres'  # Container name
+        db_host = 'postgres'
+        db_port = 5432
+    else:
+        db_host = 'localhost'
+        db_port = 5433 
+    
+    return {
+        'host': db_host,
+        'port': db_port,
+        'user': os.getenv('DB_USER', 'myuser'),
+        'password': os.getenv('DB_PASSWORD', 'mypassword'),
+        'database': os.getenv('DB_NAME', 'myapp')
+    }
 
-    return 'localhost'  # Local development
-DB_HOST = set_host()
-
-DATABASE_URL = f"postgresql://{DATABASE_USER}:{DATABASE_PASSWORD}@{DB_HOST}/{DATABASE_NAME}"
+db_config = get_db_config()
+DB_HOST = db_config['host']
+DB_PORT = db_config['port']
+DATABASE_USER = db_config['user']
+DATABASE_PASSWORD = db_config['password']
+DATABASE_NAME = db_config['database']
+DATABASE_URL = f"postgresql://{DATABASE_USER}:{DATABASE_PASSWORD}@{DB_HOST}:{DB_PORT}/{DATABASE_NAME}"
 EXPECTED_TABLES = ['documents', 'entities']
 
 def _verify_table(conn, table_name, schema_name='public'):
@@ -210,18 +218,10 @@ def insert_data(engine, data):
             logger.error(f"Error inserting data: {str(e)}")
             raise
 
-
-def main():
-    """
-    Where the magic happens.
-    """
+if __name__ == "__main__":
     data_path = os.getcwd() + '/data/metadata.json'
     engine = create_engine(f"{DATABASE_URL}")
     verify_database()
     data = read_data(data_path)
     insert_data(engine, data)
     logger.info("Loading completed")
-
-
-if __name__ == "__main__":
-    main()

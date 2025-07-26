@@ -4,6 +4,7 @@ and downloads all of the documents from the Cook County Recorder
 related to that PIN
 """
 import json
+import csv
 import re
 import os
 import time
@@ -24,21 +25,30 @@ logging.basicConfig(
 )
 
 load_dotenv()
-DATABASE_NAME = os.getenv("DB_NAME")
-DATABASE_USER = os.getenv("DB_USER")
-DATABASE_PASSWORD = os.getenv("DB_PASSWORD")
-
-def set_host():
-    """
-    Sets hostname based on environment
-    """
+def get_db_config():
+    """Get database configuration based on environment"""
     if os.path.exists('/.dockerenv'):
-        return 'postgres'  # Container name
+        db_host = 'postgres'
+        db_port = 5432
+    else:
+        db_host = 'localhost'
+        db_port = 5433 
+    
+    return {
+        'host': db_host,
+        'port': db_port,
+        'user': os.getenv('DB_USER', 'myuser'),
+        'password': os.getenv('DB_PASSWORD', 'mypassword'),
+        'database': os.getenv('DB_NAME', 'myapp')
+    }
 
-    return 'localhost'  # Local development
-DB_HOST = set_host()
-
-DATABASE_URL = f"postgresql://{DATABASE_USER}:{DATABASE_PASSWORD}@{DB_HOST}/{DATABASE_NAME}"
+db_config = get_db_config()
+DB_HOST = db_config['host']
+DB_PORT = db_config['port']
+DATABASE_USER = db_config['user']
+DATABASE_PASSWORD = db_config['password']
+DATABASE_NAME = db_config['database']
+DATABASE_URL = f"postgresql://{DATABASE_USER}:{DATABASE_PASSWORD}@{DB_HOST}:{DB_PORT}/{DATABASE_NAME}"
 
 class Scraper:
     '''
@@ -328,31 +338,17 @@ class Scraper:
 
             self.extract_from_doc_urls()
             time_y = time.time()
-            logger.info(f"Completed {pin} in {time_x - time_y} seconds")
+            logger.info(f"Completed {pin} in {time_y - time_x} seconds")
 
         out_path = self.data_dir + '/metadata.json'
         with open(out_path, 'w') as file:
             json.dump(self.data, file, indent=4, sort_keys=True)
 
-def get_pin_list():
-    """
-    Pull the PIN list using an on-disk SQL query
-    """
-    sql_file_path = 'vacant_bldg_query.sql'
-    with open(sql_file_path, 'r') as file:
-        sql_query = file.read()
-
-    engine = create_engine(DATABASE_URL)
-    with engine.connect() as connection:
-        result = connection.execute(text(sql_query))
-
-        rows = result.fetchall()
-        list_list = [list(row) for row in rows]
-
-        return list_list
-
 if __name__ == "__main__":
     s = Scraper()
-    pins = [pin[0] for pin in get_pin_list()]
-    pins = pins[0:10]
+    pins = []
+    path = 'vacant_bldg_pins.csv'
+    with open(path, 'r', newline='') as file:
+        for row in csv.reader(file, delimiter=' '):
+            pins.append(''.join(row).strip(' '))
     s.scrape(pins)
