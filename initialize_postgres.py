@@ -4,9 +4,9 @@ Creates them if they don't exist and exits.
 """
 import sys
 import os
-from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
 from logger import logging
+from db_config import get_db_config
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(
@@ -16,53 +16,35 @@ logging.basicConfig(
     level=logging.INFO,
 )
 
-load_dotenv()
-
-def get_db_config():
-    """Get database configuration based on environment"""
-    if os.path.exists('/.dockerenv'):
-        db_host = 'postgres'
-        db_port = 5432
-    else:
-        db_host = 'localhost'
-        db_port = 5433
-
-    return {
-        'host': db_host,
-        'port': db_port,
-        'user': os.getenv('DB_USER', 'myuser'),
-        'password': os.getenv('DB_PASSWORD', 'mypassword'),
-        'database': os.getenv('DB_NAME', 'myapp')
-    }
-
 db_config = get_db_config()
-DB_HOST = db_config['host']
-DB_PORT = db_config['port']
-DATABASE_USER = db_config['user']
-DATABASE_PASSWORD = db_config['password']
-DATABASE_NAME = db_config['database']
-DATABASE_URL = f"postgresql://{DATABASE_USER}:{DATABASE_PASSWORD}@{DB_HOST}:{DB_PORT}/{DATABASE_NAME}"
+database_url = "postgresql://{username}:{password}@{host}:{port}/{database}".format(
+    username=db_config['user'],
+    password=db_config['password'],
+    host=db_config['host'],
+    port=db_config['port'],
+    database=db_config['database']
+)
 
 def create_database():
     """Create the database if it doesn't exist"""
 
     try:
-        admin_url = f"postgresql://{DATABASE_USER}:{DATABASE_PASSWORD}@{DB_HOST}/postgres"
+        admin_url = f"postgresql://{db_config['user']}:{db_config['password']}@{db_config['host']}/postgres"
         engine = create_engine(admin_url, isolation_level="AUTOCOMMIT")
 
         with engine.connect() as conn:
             conn = conn.execution_options(autocommit=True)
             result = conn.execute(
                 text("SELECT 1 FROM pg_database WHERE datname = :db_name"),
-                {"db_name": DATABASE_NAME}
+                {"db_name": db_config['database']}
             )
             exists = result.fetchone()
             if not exists:
                 logger.info("Database not found, creating...")
-                conn.execute(text(f"CREATE DATABASE {DATABASE_NAME}"))
-                logger.info(f"Created database '{DATABASE_NAME}'")
+                conn.execute(text(f"CREATE DATABASE {db_config['database']}"))
+                logger.info(f"Created database '{db_config['database']}'")
             else:
-                logger.info(f"Database '{DATABASE_NAME}' already exists")
+                logger.info(f"Database '{db_config['database']}' already exists")
 
         engine.dispose()
 
@@ -130,6 +112,6 @@ def create_tables(engine):
         sys.exit(1)
 
 if __name__ == "__main__":
-    engine = create_engine(DATABASE_URL)
+    engine = create_engine(database_url)
     create_database()
     create_tables(engine)

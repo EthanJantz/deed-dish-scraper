@@ -5,9 +5,9 @@ import sys
 import json
 import os
 from datetime import datetime
-from dotenv import load_dotenv
 from sqlalchemy import create_engine, text, inspect
 from logger import logging
+from db_config import get_db_config
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(
@@ -16,32 +16,15 @@ logging.basicConfig(
     encoding="utf-8",
     level=logging.INFO,
 )
-load_dotenv()
-
-def get_db_config():
-    """Get database configuration based on environment"""
-    if os.path.exists('/.dockerenv'):
-        db_host = 'postgres'
-        db_port = 5432
-    else:
-        db_host = 'localhost'
-        db_port = 5433 
-    
-    return {
-        'host': db_host,
-        'port': db_port,
-        'user': os.getenv('DB_USER', 'myuser'),
-        'password': os.getenv('DB_PASSWORD', 'mypassword'),
-        'database': os.getenv('DB_NAME', 'myapp')
-    }
 
 db_config = get_db_config()
-DB_HOST = db_config['host']
-DB_PORT = db_config['port']
-DATABASE_USER = db_config['user']
-DATABASE_PASSWORD = db_config['password']
-DATABASE_NAME = db_config['database']
-DATABASE_URL = f"postgresql://{DATABASE_USER}:{DATABASE_PASSWORD}@{DB_HOST}:{DB_PORT}/{DATABASE_NAME}"
+database_url = "postgresql://{username}:{password}@{host}:{port}/{database}".format(
+    username=db_config['user'],
+    password=db_config['password'],
+    host=db_config['host'],
+    port=db_config['port'],
+    database=db_config['database']
+)
 EXPECTED_TABLES = ['documents', 'entities']
 
 def _verify_table(conn, table_name, schema_name='public'):
