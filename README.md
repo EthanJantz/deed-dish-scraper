@@ -39,7 +39,7 @@ Before you begin, ensure you have the following installed on your system:
     You can customize these values, but ensure they match your desired database configuration.
 
 3.  **Prepare Input Data:**
-    Place your `pins.csv` file inside the `data/` directory. This CSV should contain the PINs you wish to scrape, with one PIN per line. An example file is included.
+    Place your `pins.csv` file inside the `data/` directory. This CSV should contain the PINs you wish to scrape, with one PIN per line.
 
 4.  **Build and Run Docker Containers:**
     From the project root directory, run:
