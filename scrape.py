@@ -1,7 +1,8 @@
-""" """
+"""Tool to scrape the Cook County Recorder of Deeds site for document metadata"""
 
 import os
 import re
+import csv
 import sqlite3
 import logging
 from bs4 import BeautifulSoup
@@ -26,8 +27,6 @@ url_templates: list = [
     "https://crs.cookcountyclerkil.gov/search/SortResultByPin?id1={pin}&column=DocTypeDescription&direction=desc",
     "https://crs.cookcountyclerkil.gov/search/SortResultByPin?id1={pin}&column=DocTypeDescription&direction=asc",
 ]
-data: dict = {}
-data_dir: str = os.getcwd() + "/data"
 
 
 def make_snake_case(s: str) -> str:
@@ -78,7 +77,7 @@ def retrieve_doc_page_urls(pin: str) -> list[str]:
 
     url_pathnames = []
     for url in url_templates:
-        logger.info("Querying " + url.format(pin=pin))
+        logger.info(f"Querying {url.format(pin=pin)}")
         response = requests.get(url.format(pin=pin))
         soup = BeautifulSoup(response.text, features="lxml")
         url_pathnames += [x["href"] for x in soup.find_all("a", string="View")]
@@ -92,6 +91,7 @@ def scrape_doc_page(url_pathname: str) -> dict[str]:
     """
     try:
         url = base_url + url_pathname
+        logger.info(f"Scraping {url} ...")
         response = requests.get(url)
         assert (
             response.status_code == 200
@@ -354,31 +354,31 @@ def insert_content(con, pin: str, content: dict) -> None:
 
     except Exception as e:
         con.rollback()
-        print(f"Error inserting document {doc_num}: {e}")
+        logger.error(f"Error inserting document {doc_num}: {e}")
         raise
     finally:
         cur.close()
 
 
 if __name__ == "__main__":
-    con = sqlite3.connect("deeds.db")
+    con = sqlite3.connect("data/deeds.db")
     create_tables(con)
 
-    # path = 'data/pins.csv'
-    # if os.path.exists(path):
-    #    pins = []
-    #    with open(path, 'r', newline='') as file:
-    #        for row in csv.reader(file, delimiter=' '):
-    #            pins.append(''.join(row).strip(' '))
-    # else:
-    pins = [
-        "17-29-304-001-0000",  # Park
-        "17-05-115-085-0000",  # Starsiak Clothing
-        "16-10-421-053-0000",  # Hotel Guyon
-    ]
+    path = "data/pins.csv"
+    if os.path.exists(path):
+        pins = []
+        with open(path, "r", newline="") as file:
+            for row in csv.reader(file, delimiter=" "):
+                pins.append("".join(row).strip(" "))
+    else:
+        pins = [
+            "17-29-304-001-0000",  # Park
+            "17-05-115-085-0000",  # Starsiak Clothing
+            "16-10-421-053-0000",  # Hotel Guyon
+        ]
 
     for pin in pins:
-        # print("PIN: ", pin)
+        logger.info(f"Querying PIN: {pin}")
         cleaned_pin = clean_pin(pin)
         doc_pathnames = retrieve_doc_page_urls(cleaned_pin)
         doc_pathnames = remove_duplicates(doc_pathnames)

@@ -1,100 +1,107 @@
-# Cook County Deeds Scraper
+# Cook County Recorder of Deeds Scraper
 
-This project is an ETL (Extract, Transform, Load) pipeline designed to scrape property deed information from the Cook County Clerk's website, download associated PDF documents, and load the structured data into a PostgreSQL database.
+This repository contains a Python script (`scrape.py`) designed to scrape document metadata from the Cook County Recorder of Deeds public access website. It automates the process of querying Property Identification Numbers (PINs), extracting relevant document details, and storing them in a local SQLite database.
 
 ## Features
 
-*   **Web Scraping**: Scrapes document metadata and associated PDFs for specified Property Identification Numbers (PINs).
-*   **Data Extraction**: Extracts details like document numbers, dates, addresses, document types, consideration amounts, and entity (grantor/grantee) information.
-*   **PDF Download**: Downloads the original PDF documents and stores them locally.
-*   **Database Integration**: Loads the extracted data into a PostgreSQL database, with tables for documents and entities.
-*   **Database Management**: Automates database and table creation if they don't exist.
-*   **Containerized Environment**: Utilizes Docker and Docker Compose for easy setup and consistent execution.
+*   **PIN Cleaning**: Standardizes PIN formats for consistent queries.
+*   **Dynamic URL Retrieval**: Collects all available document page URLs for a given PIN.
+*   **Comprehensive Data Extraction**: Scrapes document information (date executed, date recorded, document type, etc.), grantor/grantee details, prior document references, and related PINs.
+*   **PDF URL Discovery**: Extracts the direct URL to the associated PDF document.
+*   **SQLite Database Storage**: Persists the extracted data into a structured `deeds.db` file.
 
-## Prerequisites
+## Requirements
 
-Before you begin, ensure you have the following installed on your system:
+*   Python 3.12 or higher
+*   `uv`
 
-*   [Docker](https://docs.docker.com/get-docker/)
-*   [Docker Compose](https://docs.docker.com/compose/install/)
+## Installation
 
-## Setup
-
-1.  **Clone the repository:**
-
+1.  **Clone the repository**:
     ```bash
-    git clone <repository-url>
-    cd cook-county-deeds-scraper
+    git clone https://github.com/your-username/cook-county-deeds-scraper.git
+    cd cc-deeds-scraper
     ```
 
-2.  **Create a `.env` file:**
-    Create a file named `.env` in the root directory of the project. This file will store your PostgreSQL database credentials.
-
-    ```dotenv
-    # .env
-    DB_USER=myuser
-    DB_PASSWORD=mypassword
-    DB_NAME=myapp
-    ```
-    You can customize these values, but ensure they match your desired database configuration.
-
-3.  **Prepare Input Data:**
-    Place your `pins.csv` file inside the `data/` directory. This CSV should contain the PINs you wish to scrape, with one PIN per line.
-
-4.  **Build and Run Docker Containers:**
-    From the project root directory, run:
-
+2.  **Create a virtual environment** (recommended, using `uv`):
     ```bash
-    docker-compose up --build -d
+    uv venv
+    source .venv/bin/activate  # On Windows, use `.venv\Scripts\activate`
     ```
-    This command will:
-    *   Build the `scraper` service Docker image.
-    *   Start the `postgres` database service.
-    *   Start the `scraper` service.
 
-    The PostgreSQL database will be accessible on `localhost:5433` from your host machine.
-
-## Project Structure
-
-*   `main.py`: The entry point for the ETL pipeline, orchestrating scraping, database initialization, and data loading.
-*   `scraper.py`: Contains the `Scraper` class responsible for fetching data from the Cook County Clerk's website and downloading PDFs.
-*   `initialize_postgres.py`: Handles the creation of the PostgreSQL database and necessary tables (`documents` and `entities`).
-*   `load_scraped_data.py`: Manages reading scraped data (JSON) and inserting it into the PostgreSQL database.
-*   `db_config.py`: Centralized configuration for database connection parameters.
-*   `Dockerfile`: Defines the Docker image for the `scraper` service.
-*   `docker-compose.yml`: Defines the multi-container Docker application (PostgreSQL and scraper).
-*   `data/`: Directory for input CSVs (e.g., `pins.csv`) and output scraped data (PDFs, `metadata.json`).
-*   `.env`: Environment variables for database configuration (not committed to VCS).
-*   `logger.py`: (Assumed) A simple logging configuration module.
-*   `pyproject.toml`, `uv.lock`: Dependency management files using `uv`.
+3.  **Install dependencies** using `uv`:
+    ```bash
+    uv pip install -e .
+    ```
 
 ## Usage
 
-Once the Docker containers are up and running, you can execute the ETL pipeline within the `scraper` container.
+To run the scraper, execute the `scrape.py` script from your terminal:
 
-1.  **Access the scraper container:**
-
-    ```bash
-    docker exec -it deeds-scraper bash
-    ```
-
-2.  **Run the main ETL process:**
-    Inside the container, execute the `main.py` script:
-
-    ```bash
-    python main.py
-    ```
-    This will:
-    *   Initialize the database and tables.
-    *   Read PINs from `data/pins.csv`.
-    *   Scrape data for each PIN.
-    *   Download PDFs to `data/` subdirectories.
-    *   Save scraped metadata to `data/metadata.json`.
-    *   Load the scraped data into the PostgreSQL database.
-
-3.  **Verify Data (Optional):**
-    You can connect to your PostgreSQL database (e.g., via `psql` or a GUI client on `localhost:5433`) and query the `documents` and `entities` tables to verify data insertion.
-
-To stop and remove the containers and volumes:
 ```bash
-docker-compose down -v
+python scrape.py
+```
+
+The script will perform the following actions:
+
+1.  **Database Creation**: It will create an SQLite database named `deeds.db` in the `data/` directory (if it doesn't already exist) and set up the necessary tables.
+2.  **PIN Input**:
+    *   If a `data/pins.csv` file exists, it will read PINs from this file. Each PIN should be on a new line or space-separated.
+    *   If `data/pins.csv` does not exist, it will use a few hardcoded example PINs.
+3.  **Scraping and Storage**: For each PIN, it will retrieve document links, scrape the details from each document page, and insert the extracted data into the `deeds.db` database.
+4.  **Logging**: Detailed logs of the scraping process, including errors, will be written to `scraper.log`.
+
+## Database Schema
+
+The `deeds.db` SQLite database consists of the following tables:
+
+### `documents` table
+
+Stores core document information.
+
+| Column                | Type        | Description                                  |
+| :-------------------- | :---------- | :------------------------------------------- |
+| `doc_num`             | `VARCHAR(50)` | Primary Key: Unique document number.         |
+| `pin`                 | `VARCHAR(14)` | Property Identification Number.              |
+| `date_executed`       | `DATE`      | Date the document was executed.              |
+| `date_recorded`       | `DATE`      | Date the document was recorded.              |
+| `num_pages`           | `INTEGER`   | Number of pages in the document.             |
+| `address`             | `VARCHAR(255)`| Property address.                            |
+| `doc_type`            | `VARCHAR(50)` | Type of document (e.g., Warranty Deed).      |
+| `consideration_amount`| `VARCHAR(50)` | Amount of consideration, if available.       |
+| `pdf_url`             | `VARCHAR(2048)`| URL to the PDF version of the document.      |
+
+### `entities` table
+
+Stores grantor and grantee information associated with documents.
+
+| Column          | Type          | Description                                  |
+| :-------------- | :------------ | :------------------------------------------- |
+| `id`            | `INTEGER`     | Primary Key, Auto-incrementing.              |
+| `doc_num`       | `VARCHAR(50)` | Foreign Key: References `documents.doc_num`. |
+| `pin`           | `VARCHAR(50)` | The PIN associated with the document.        |
+| `entity_name`   | `VARCHAR(255)`| Name of the grantor or grantee.              |
+| `entity_status` | `VARCHAR(7)`  | 'grantor' or 'grantee'.                      |
+| `trust_number`  | `VARCHAR(50)` | Trust number, if applicable.                 |
+
+### `pins` table
+
+Stores related PINs found within a document's legal description.
+
+| Column        | Type          | Description                                  |
+| :------------ | :------------ | :------------------------------------------- |
+| `id`          | `INTEGER`     | Primary Key, Auto-incrementing.              |
+| `pin`         | `VARCHAR(14)` | The primary PIN being queried.               |
+| `doc_num`     | `VARCHAR(50)` | Foreign Key: References `documents.doc_num`. |
+| `related_pin` | `VARCHAR(14)` | A PIN found related to the document.         |
+
+### `doc_relations` table
+
+Stores relationships between documents (e.g., prior documents).
+
+| Column          | Type          | Description                                  |
+| :-------------- | :------------ | :------------------------------------------- |
+| `id`            | `INTEGER`     | Primary Key, Auto-incrementing.              |
+| `doc_num`       | `VARCHAR(50)` | Foreign Key: References `documents.doc_num`. |
+| `prior_doc_num` | `VARCHAR(50)` | Foreign Key: References another `documents.doc_num` that is a prior document. |
+
