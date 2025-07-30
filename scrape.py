@@ -10,14 +10,14 @@ import requests
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(
-    filename=os.path.curdir + "/scraper.log",
+    filename=os.path.curdir + "/scrape.log",
     format="%(asctime)s %(message)s",
     encoding="utf-8",
     level=logging.INFO,
 )
 
-base_url: str = "https://crs.cookcountyclerkil.gov"
-url_templates: list = [
+BASE_URL: str = "https://crs.cookcountyclerkil.gov"
+URL_TEMPLATES: list = [
     "https://crs.cookcountyclerkil.gov/search/SortResultByPin?id1={pin}&column=DateRecorded&direction=desc",
     "https://crs.cookcountyclerkil.gov/Search/SortResultByPin?id1={pin}&column=DateRecorded&direction=asc",
     "https://crs.cookcountyclerkil.gov/search/SortResultByPin?id1={pin}&column=AlphaDocNumber&direction=desc",
@@ -31,6 +31,8 @@ url_templates: list = [
 
 def make_snake_case(s: str) -> str:
     """Converts a given string to snake_case
+    Parameters:
+       s (str): A string value
     Returns:
        A string in snake_case
     """
@@ -73,10 +75,16 @@ def clean_pin(pin: str) -> str:
 def retrieve_doc_page_urls(pin: str) -> list[str]:
     """
     Collects all of the available URls to document pages associated with a given PIN
+
+    Parameters:
+        pin (str): A pin value
+
+    Returns:
+        A list of url pathnames for documents associated with the given pin
     """
 
     url_pathnames = []
-    for url in url_templates:
+    for url in URL_TEMPLATES:
         logger.info(f"Querying {url.format(pin=pin)}")
         response = requests.get(url.format(pin=pin))
         soup = BeautifulSoup(response.text, features="lxml")
@@ -86,11 +94,16 @@ def retrieve_doc_page_urls(pin: str) -> list[str]:
 
 def scrape_doc_page(url_pathname: str) -> dict[str]:
     """
-    Iterate through the doc_urls collected and download the documents and
-    other relevant metadata.
+    Given an url_pathname, pulls the metadata from the document page and returns it
+
+    Parameters:
+        url_pathname (str): The url path for a given document.
+
+    Returns:
+        Document metadata (dict) from the document page.
     """
     try:
-        url = base_url + url_pathname
+        url = BASE_URL + url_pathname
         logger.info(f"Scraping {url} ...")
         response = requests.get(url)
         assert (
@@ -104,11 +117,10 @@ def scrape_doc_page(url_pathname: str) -> dict[str]:
         entities = extract_grantor_grantee(soup)
         prior_docs = extract_prior_documents(soup)
         related_pins = extract_related_pins(soup)
-        related_pins = remove_duplicates(related_pins)
         pdf_url_pathname = soup.find("a", href=re.compile("/Document/DisplayPdf"))[
             "href"
         ]
-        pdf_url = base_url + pdf_url_pathname
+        pdf_url = BASE_URL + pdf_url_pathname
 
         content = {
             "doc_info": doc_info,
@@ -126,6 +138,15 @@ def scrape_doc_page(url_pathname: str) -> dict[str]:
 
 
 def extract_related_pins(soup: BeautifulSoup) -> list[str]:
+    """
+    Helper function for pulling related pins from a document page
+
+    Parameters:
+        A BeautifulSoup object containing the HTML content for a document page
+
+    Returns:
+        A list (list[str]) of the pins related to the pin described in the document, unduplicated
+    """
     section = soup.find(True, string=re.compile("Legal Description"))
     if not section:
         return []
@@ -146,10 +167,20 @@ def extract_related_pins(soup: BeautifulSoup) -> list[str]:
         related_pin_clean = clean_pin(related_pin)
         related_pins.append(related_pin_clean)
 
+    related_pins = remove_duplicates(related_pins)
     return related_pins
 
 
 def extract_prior_documents(soup: BeautifulSoup) -> list[str]:
+    """
+    Helper function for pulling prior documents from a document page
+
+    Parameters:
+        A BeautifulSoup object containing the HTML content for a document page
+
+    Returns:
+        A list (list[str]) of the prior documents associated with the given document
+    """
     section_title = "Prior Documents"
     section_legend = soup.find("span", string=re.compile(section_title))
     if not section_legend:
@@ -235,7 +266,16 @@ def extract_grantor_grantee(soup: BeautifulSoup) -> dict[list[str]]:
     return {"grantors": grantors, "grantees": grantees}
 
 
-def create_tables(con):
+def create_tables(con: sqlite3.Connection):
+    """
+    Defines and creates the table schemas for the sqlite3 doc_relations_table
+
+    Parameters:
+        con (Connection): A connection to a sqlite3 database
+
+    Returns:
+        None
+    """
     table_definitions = {
         "doc_table": """
                     CREATE TABLE IF NOT EXISTS documents (
@@ -291,7 +331,18 @@ def create_tables(con):
     cur.close()
 
 
-def insert_content(con, pin: str, content: dict) -> None:
+def insert_content(con: sqlite3.Connection, pin: str, content: dict) -> None:
+    """
+    Inserts document metadata into a sqlite3 database.
+
+    Parameters:
+        con (Connection): A sqlite3 connection
+        pin (str): A pin value
+        content (dict): The metadata for a single document
+
+    Returns:
+        None
+    """
     doc_num = content["doc_info"]["document_number"]
     cur = con.cursor()
 
@@ -350,7 +401,7 @@ def insert_content(con, pin: str, content: dict) -> None:
             cur.execute(prior_doc_query, (doc_num, prior_doc))
 
         con.commit()
-        print(f"Successfully inserted document {doc_num}")
+        logger.info(f"Successfully inserted document {doc_num}")
 
     except Exception as e:
         con.rollback()
@@ -360,10 +411,7 @@ def insert_content(con, pin: str, content: dict) -> None:
         cur.close()
 
 
-if __name__ == "__main__":
-    con = sqlite3.connect("data/deeds.db")
-    create_tables(con)
-
+def get_pins_to_scrape():
     path = "data/pins.csv"
     if os.path.exists(path):
         pins = []
@@ -377,14 +425,41 @@ if __name__ == "__main__":
             "16-10-421-053-0000",  # Hotel Guyon
         ]
 
+    # remove pins that have already been scraped
+    path = "data/completed_pins.csv"
+    if os.path.exists(path):
+        completed_pins = []
+        with open(path, "r", newline="") as file:
+            for row in csv.reader(file, delimiter=" "):
+                completed_pins.append("".join(row).strip(" "))
+
+    pins_to_scrape = [pin for pin in pins if pin not in completed_pins]
+    return pins_to_scrape
+
+
+if __name__ == "__main__":
+    con = sqlite3.connect("data/deeds.db")
+    create_tables(con)
+
+    pins = get_pins_to_scrape()
+
     for pin in pins:
         logger.info(f"Querying PIN: {pin}")
+
         cleaned_pin = clean_pin(pin)
+
         doc_pathnames = retrieve_doc_page_urls(cleaned_pin)
         doc_pathnames = remove_duplicates(doc_pathnames)
-        # print("Doc pathnames: ", doc_pathnames)
-        for doc_pathname in doc_pathnames:
-            # print("Pulling: ", doc_pathname)
-            doc_data = scrape_doc_page(doc_pathname)
-            # print("Doc data: ", doc_data)
-            insert_content(con, pin, doc_data)
+
+        try:
+            for doc_pathname in doc_pathnames:
+                doc_data = scrape_doc_page(doc_pathname)
+                insert_content(con, pin, doc_data)
+
+            with open("data/completed_pins.csv", "a", newline="") as file:
+                file.write(f"{pin}\n")
+                file.flush()
+
+        except Exception as e:
+            logger.error(f"Error processing PIN {pin}: {e}")
+            continue
