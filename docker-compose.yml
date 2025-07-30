@@ -1,33 +1,8 @@
 services:
-  postgres:
-    image: postgis/postgis:15-3.3
-    container_name: my-postgres
-    environment:
-      POSTGRES_DB: ${DB_NAME:-myapp}
-      POSTGRES_USER: ${DB_USER:-myuser}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-mypassword}
-    ports:
-      - "5433:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    networks:
-      - app-network
-
   scraper:
     build: .
-    container_name: deeds-scraper
-    depends_on:
-      - postgres
     volumes:
-      - pdf_storage:/app/data
       - ./data:/app/data
-    networks:
-      - app-network
-    command: tail -f /dev/null
+    command: ["uv", "run", "python", "scrape.py"]
 
-volumes:
-  postgres_data:
 
-networks:
-  app-network:
-    driver: bridge
