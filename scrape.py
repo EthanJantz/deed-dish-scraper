@@ -3,10 +3,16 @@
 import os
 import re
 import csv
-import sqlite3
+from datetime import datetime
 import logging
 from bs4 import BeautifulSoup
 import requests
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session, sessionmaker
+from models import Base, Document, Entity, Pin, PriorDoc
+
+
+engine = create_engine("sqlite+pysqlite:///deeds.db", echo=True)
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(
@@ -41,17 +47,17 @@ def make_snake_case(s: str) -> str:
     return "".join(s).lower()
 
 
-def remove_duplicates(l: list[str]) -> list[str]:
+def remove_duplicates(list_of_strings: list[str]) -> list[str]:
     """
     Remove duplicate values from a list
 
     Parameters:
-        l (List[str]): A list of strings.
+        list_of_strings (List[str]): A list of strings.
 
     Returns:
         A list of unique strings.
     """
-    return list(set(l))
+    return list(set(list_of_strings))
 
 
 def clean_pin(pin: str) -> str:
@@ -66,9 +72,9 @@ def clean_pin(pin: str) -> str:
     """
     assert isinstance(pin, str), "pin must be of type str"
     pin = "".join(filter(str.isdigit, pin))
-    assert (
-        len(pin) == 14
-    ), f"pin value must evaluate to a string of  digits of length 14, instead have {pin}"
+    assert len(pin) == 14, (
+        f"pin value must evaluate to a string of  digits of length 14, instead have {pin}"
+    )
     return pin
 
 
@@ -106,10 +112,9 @@ def scrape_doc_page(url_pathname: str) -> dict[str]:
         url = BASE_URL + url_pathname
         logger.info(f"Scraping {url} ...")
         response = requests.get(url)
-        assert (
-            response.status_code == 200
-        ), f"Document URL at {
-            url} returned status code {response.status_code}, skipping..."
+        assert response.status_code == 200, f"Document URL at {
+            url
+        } returned status code {response.status_code}, skipping..."
 
         soup = BeautifulSoup(response.text, features="lxml")
 
@@ -266,72 +271,20 @@ def extract_grantor_grantee(soup: BeautifulSoup) -> dict[list[str]]:
     return {"grantors": grantors, "grantees": grantees}
 
 
-def create_tables(con: sqlite3.Connection):
+def create_tables():
     """
-    Defines and creates the table schemas for the sqlite3 doc_relations_table
+    Defines and creates the table schemas using SQLAlchemy's ORM Base.metadata
 
     Parameters:
-        con (Connection): A connection to a sqlite3 database
+       None (uses the global 'engine')
 
     Returns:
         None
     """
-    table_definitions = {
-        "doc_table": """
-                    CREATE TABLE IF NOT EXISTS documents (
-                        doc_num VARCHAR(50) PRIMARY KEY,
-                        pin VARCHAR(14) NOT NULL,
-                        date_executed DATE,
-                        date_recorded DATE NOT NULL,
-                        num_pages INTEGER,
-                        address VARCHAR(255),
-                        doc_type VARCHAR(50) NOT NULL,
-                        consideration_amount VARCHAR(50),
-                        pdf_url VARCHAR(2048) NOT NULL
-                    );
-                """,
-        "entities_table": """
-            CREATE TABLE IF NOT EXISTS entities (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                doc_num VARCHAR(50) NOT NULL,
-                pin VARCHAR(50) NOT NULL,
-                entity_name VARCHAR(255) NOT NULL,
-                entity_status VARCHAR(7) NOT NULL,
-                trust_number VARCHAR(50),
-                CHECK (entity_status IN ('grantor', 'grantee')),
-                CONSTRAINT unique_doc_pin_entity UNIQUE (doc_num, pin, entity_name),
-                FOREIGN KEY (doc_num) REFERENCES documents(doc_num)
-            );
-        """,
-        "pins_table": """
-                CREATE TABLE IF NOT EXISTS pins (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    pin VARCHAR(14) NOT NULL,
-                    doc_num VARCHAR(50) NOT NULL,
-                    related_pin VARCHAR(14) NOT NULL,
-                    FOREIGN KEY (doc_num) REFERENCES documents(doc_num)
-                );
-            """,
-        "doc_relations_table": """
-                CREATE TABLE IF NOT EXISTS doc_relations (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    doc_num VARCHAR(50) NOT NULL,
-                    prior_doc_num VARCHAR(50) NOT NULL,
-                    FOREIGN KEY (doc_num) REFERENCES documents(doc_num),
-                    FOREIGN KEY (prior_doc_num) REFERENCES documents(doc_num)
-                );
-            """,
-    }
-    cur = con.cursor()
-
-    for _, definition in table_definitions.items():
-        cur.execute(definition)
-
-    con.commit()
-    cur.close()
+    Base.metadata.create_all(engine)
 
 
-def insert_content(con: sqlite3.Connection, pin: str, content: dict) -> None:
+def insert_content(session: Session, pin: str, content: dict) -> None:
     """
     Inserts document metadata into a sqlite3 database.
 
@@ -344,71 +297,76 @@ def insert_content(con: sqlite3.Connection, pin: str, content: dict) -> None:
         None
     """
     doc_num = content["doc_info"]["document_number"]
-    cur = con.cursor()
 
     try:
-        doc_data = """
-            INSERT OR IGNORE INTO documents (
-                doc_num, pin, date_executed, date_recorded,
-                num_pages, address, doc_type, consideration_amount, pdf_url
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
-        """
-        cur.execute(
-            doc_data,
-            (
-                doc_num,
-                pin,
-                content["doc_info"]["date_executed"],
-                content["doc_info"]["date_recorded"],
-                content["doc_info"]["#_of_pages"],
-                content["doc_info"]["address"],
-                content["doc_info"]["document_type"],
-                content["doc_info"].get("consideration_amount", ""),
-                content["pdf_url"],
-            ),
+        date_executed_str = content["doc_info"].get("date_executed")
+        date_executed = (
+            datetime.strptime(date_executed_str, "%m/%d/%Y").date()
+            if date_executed_str
+            else None
         )
 
-        entity_query = """
-            INSERT OR IGNORE INTO entities (
-                doc_num, pin, entity_name, entity_status, trust_number
-            ) VALUES (?, ?, ?, ?, ?);
-        """
+        date_recorded_str = content["doc_info"].get("date_recorded")
+        date_recorded = (
+            datetime.strptime(date_recorded_str, "%m/%d/%Y").date()
+            if date_recorded_str
+            else None
+        )
 
-        for entity in content["entities"]["grantors"]:
-            entity_name = entity.get("name")
-            trust_number = entity.get("trust_number", "")
-            cur.execute(
-                entity_query, (doc_num, pin, entity_name, "grantor", trust_number)
+        document = Document(
+            doc_num=doc_num,
+            pin=pin,
+            date_executed=date_executed,
+            date_recorded=date_recorded,
+            num_pages=int(content["doc_info"].get("#_of_pages", 0)),
+            address=content["doc_info"].get("address"),
+            doc_type=content["doc_info"]["document_type"],
+            consideration_amount=content["doc_info"].get("consideration_amount"),
+            pdf_url=content["pdf_url"],
+        )
+
+        session.add(document)
+
+        for entity_data in content["entities"]["grantors"]:
+            entity = Entity(
+                doc_num=doc_num,
+                pin=pin,
+                entity_name=entity_data["name"],
+                entity_status="grantor",
+                trust_number=entity_data["trust_number"],
             )
+            session.add(entity)
 
-        for entity in content["entities"]["grantees"]:
-            entity_name = entity.get("name")
-            trust_number = entity.get("trust_number", "")
-            cur.execute(
-                entity_query, (doc_num, pin, entity_name, "grantee", trust_number)
+        for entity_data in content["entities"]["grantees"]:
+            entity = Entity(
+                doc_num=doc_num,
+                pin=pin,
+                entity_name=entity_data["name"],
+                entity_status="grantee",
+                trust_number=entity_data["trust_number"],
             )
+            session.add(entity)
 
-        related_pin_query = """
-            INSERT OR IGNORE INTO pins (pin, doc_num, related_pin) VALUES (?, ?, ?);
-        """
-        for related_pin in content["related_pins"]:
-            cur.execute(related_pin_query, (pin, doc_num, related_pin))
+        for related_pin_str in content["related_pins"]:
+            related_pin_obj = Pin(
+                pin=pin,
+                doc_num=doc_num,
+                related_pin=related_pin_str,
+            )
+            session.add(related_pin_obj)
 
-        prior_doc_query = """
-            INSERT OR IGNORE INTO doc_relations (doc_num, prior_doc_num) VALUES (?, ?);
-        """
-        for prior_doc in content["prior_docs"]:
-            cur.execute(prior_doc_query, (doc_num, prior_doc))
+        for prior_doc_num_str in content["prior_docs"]:
+            prior_doc_obj = PriorDoc(
+                doc_num=doc_num,
+                prior_doc_num=prior_doc_num_str,
+            )
+            session.add(prior_doc_obj)
 
-        con.commit()
-        logger.info(f"Successfully inserted document {doc_num}")
+        logger.info(f"Successfully added document data to session: {doc_num}")
 
     except Exception as e:
-        con.rollback()
         logger.error(f"Error inserting document {doc_num}: {e}")
         raise
-    finally:
-        cur.close()
 
 
 def get_pins_to_scrape():
@@ -433,13 +391,21 @@ def get_pins_to_scrape():
             for row in csv.reader(file, delimiter=" "):
                 completed_pins.append("".join(row).strip(" "))
 
-    pins_to_scrape = [pin for pin in pins if pin not in completed_pins]
-    return pins_to_scrape
+        pins_to_scrape = [pin for pin in pins if pin not in completed_pins]
+        return pins_to_scrape
+
+    assert pins, "pins must have length > 0"
+    return pins
 
 
 if __name__ == "__main__":
-    con = sqlite3.connect("data/deeds.db")
-    create_tables(con)
+    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+    if not os.path.exists("data"):
+        os.makedirs("data")
+        logger.info("No data directory found, using default PINs")
+
+    create_tables()
 
     pins = get_pins_to_scrape()
 
@@ -451,15 +417,23 @@ if __name__ == "__main__":
         doc_pathnames = retrieve_doc_page_urls(cleaned_pin)
         doc_pathnames = remove_duplicates(doc_pathnames)
 
+        db_session = SessionLocal()
         try:
             for doc_pathname in doc_pathnames:
                 doc_data = scrape_doc_page(doc_pathname)
-                insert_content(con, pin, doc_data)
+                if doc_data:
+                    insert_content(db_session, pin, doc_data)
+
+            db_session.commit()
 
             with open("data/completed_pins.csv", "a", newline="") as file:
                 file.write(f"{pin}\n")
                 file.flush()
 
         except Exception as e:
+            db_session.rollback()
             logger.error(f"Error processing PIN {pin}: {e}")
             continue
+
+        finally:
+            db_session.close()
