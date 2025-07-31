@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from models import Base, Document, Entity, Pin, PriorDoc
 
 
-engine = create_engine("sqlite+pysqlite:///deeds.db", echo=True)
+engine = create_engine("sqlite+pysqlite:///data/deeds.db", echo=True)
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(
