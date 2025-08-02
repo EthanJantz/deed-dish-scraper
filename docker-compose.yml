@@ -1,8 +1,0 @@
-services:
-  scraper:
-    build: .
-    volumes:
-      - ./data:/app/data
-    command: ["uv", "run", "python", "scrape.py"]
-
-
