@@ -11,8 +11,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from models import Base, Document, Entity, Pin, PriorDoc
 
-
-engine = create_engine("sqlite+pysqlite:///data/deeds.db", echo=True)
+print(os.environ.get("DB_URL"))
+engine = create_engine(f"{os.environ.get('DB_URL')}", echo=True)
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(

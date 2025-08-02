@@ -42,7 +42,7 @@ class Entity(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     doc_num: Mapped[str] = mapped_column(ForeignKey("documents.doc_num"))
-    pin: Mapped[str] = mapped_column(ForeignKey("documents.pin"))
+    pin: Mapped[str] = mapped_column(String(14))
     entity_name: Mapped[str] = mapped_column(String(255))
     entity_status: Mapped[str] = mapped_column(String(20))
     trust_number: Mapped[Optional[str]] = mapped_column(String(50))
@@ -62,7 +62,7 @@ class Pin(Base):
     __tablename__ = "pins"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    pin: Mapped[str] = mapped_column(ForeignKey("documents.pin"))
+    pin: Mapped[str] = mapped_column(String(14))
     doc_num: Mapped[str] = mapped_column(ForeignKey("documents.doc_num"))
     related_pin: Mapped[str] = mapped_column(String(14))
 
