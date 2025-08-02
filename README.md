@@ -1,80 +1,41 @@
-# Cook County Recorder of Deeds Scraper
+# Deeds Research Scraper
 
-This project provides a Python-based web scraper to collect public document metadata from the Cook County Recorder of Deeds website. The scraped data, including document details, associated entities (grantors/grantees), related Property Identification Numbers (PINs), and prior document relationships, is stored in a SQLite database.
+A Python tool for scraping document metadata from the Cook County Recorder of Deeds website and storing it in a database.
 
-## Features
+## Setup
 
-*   **Document Scraping**: Extracts comprehensive metadata for legal documents (e.g., deeds, mortgages) from `crs.cookcountyclerkil.gov`.
-*   **Data Models**: Defines SQLAlchemy ORM models (`Document`, `Entity`, `Pin`, `PriorDoc`) for structured storage.
-*   **Database Storage**: Persists scraped data into a local SQLite database (`deeds.db`).
-*   **PIN Management**: Allows scraping based on a predefined list of PINs or a `pins.csv` file, and tracks completed PINs to avoid re-scraping.
-*   **Logging**: Detailed logging of scraping activities and errors to `scrape.log`.
+This project uses `uv` for dependency management.
 
-## Getting Started
-
-These instructions will get you a copy of the project up and running on your local machine.
-
-### Prerequisites
-
-*   [Docker](https://docs.docker.com/get-docker/)
-*   [Docker Compose](https://docs.docker.com/compose/install/)
-
-### Installation
-
-1.  **Clone the repository:**
-
+1.  **Clone the repository**:
     ```bash
     git clone https://github.com/EthanJantz/cc-deeds-scraper.git
-    cd cook-county-scraper
+    cd deeds-research
     ```
-
-2.  **Build the Docker image:**
-
+2.  **Install `uv`**:
     ```bash
-    docker-compose build
+    pip install uv
+    ```
+3.  **Install dependencies**:
+    ```bash
+    uv sync
     ```
 
-    This command will build the `scraper` service image based on the `Dockerfile`. It will install all necessary Python dependencies using `uv`.
+## Configuration
 
-### Usage
+1.  **Database URL**: Create a `.env` file in the root directory and set your PostgreSQL database URL:
+    ```
+    DB_URL="postgresql://user:password@host:port/database"
+    ```
+2.  **PINs to Scrape**:
+    -   By default, the scraper uses a few hardcoded PINs.
+    -   To provide your own list of PINs, create a `data/pins.csv` file, with each PIN on a new line (e.g., `17-29-304-001-0000`).
+    -   A `data` directory will be created automatically if it doesn't exist.
+    -   `data/completed_pins.csv` will track successfully scraped PINs to avoid re-scraping.
 
-To run the scraper, execute the following command:
+## Usage
+
+Run the scraper:
 
 ```bash
-docker-compose up
+python scraper/scrape.py
 ```
-
-This will start the `scraper` service, which runs the `scrape.py` script.
-
-*   **Input PINs**:
-    *   By default, the scraper will use a few hardcoded PINs for demonstration.
-    *   To provide your own list of PINs, create a file named `pins.csv` in the `data/` directory (e.g., `./data/pins.csv`). Each PIN should be on a new line. The scraper will read from this file if it exists.
-        ```
-        17-29-304-001-0000
-        17-05-115-085-0000
-        ```
-*   **Output Data**:
-    *   The scraped data will be stored in a SQLite database located at `./data/deeds.db`.
-    *   A log file, `./scrape.log`, will record the scraping process and any errors.
-    *   A file `./data/completed_pins.csv` will be created to track PINs that have been successfully scraped, preventing duplicate efforts on subsequent runs.
-
-## Project Structure
-
-*   `models.py`: Defines the SQLAlchemy ORM models for `Document`, `Entity`, `Pin`, and `PriorDoc`. These correspond to the database tables.
-*   `scrape.py`: Contains the core scraping logic, including functions to retrieve document URLs, parse HTML, extract metadata, and insert data into the SQLite database.
-*   `Dockerfile`: Specifies how to build the Docker image for the scraping application, including dependencies and environment setup.
-*   `docker-compose.yml`: Defines the Docker services (in this case, just the `scraper`) and how they interact, including volume mounts for data persistence.
-*   `data/`: Directory mounted into the Docker container where the `deeds.db` database, `scrape.log`, `pins.csv`, and `completed_pins.csv` are stored.
-
-## Data Storage
-
-The scraped data is stored in `data/deeds.db`, an SQLite database. The schema is defined in `models.py` and includes the following tables:
-
-*   `documents`: Stores primary document information (document number, PIN, dates, pages, address, type, consideration, PDF URL).
-*   `entities`: Stores grantor and grantee information associated with documents (name, status, trust number).
-*   `pins`: Stores relationships between the primary PIN of a document and any other related PINs found on the document page.
-*   `prior_docs`: Stores relationships between a document and any prior documents referenced.
-
-## Logging
-
-All scraping activities, including successful operations and errors, are logged to `scrape.log` in the `data/` directory. This helps in monitoring the scraping process and debugging issues.

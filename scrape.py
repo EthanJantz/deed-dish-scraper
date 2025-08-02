@@ -11,7 +11,6 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from models import Base, Document, Entity, Pin, PriorDoc
 
-print(os.environ.get("DB_URL"))
 engine = create_engine(f"{os.environ.get('DB_URL')}", echo=True)
 
 logger = logging.getLogger(__name__)
@@ -286,10 +285,10 @@ def create_tables():
 
 def insert_content(session: Session, pin: str, content: dict) -> None:
     """
-    Inserts document metadata into a sqlite3 database.
+    Inserts document metadata into database.
 
     Parameters:
-        con (Connection): A sqlite3 connection
+        session (Session): A SQLAlchemy session
         pin (str): A pin value
         content (dict): The metadata for a single document
 
