@@ -48,7 +48,7 @@ def make_snake_case(s: str) -> str:
 
 def remove_duplicates(list_of_strings: list[str]) -> list[str]:
     """
-    Remove duplicate values from a list
+    Remove duplicate values from a list, preserving order.
 
     Parameters:
         list_of_strings (List[str]): A list of strings.
@@ -56,7 +56,7 @@ def remove_duplicates(list_of_strings: list[str]) -> list[str]:
     Returns:
         A list of unique strings.
     """
-    return list(set(list_of_strings))
+    return list(dict.fromkeys(list_of_strings))
 
 
 def clean_pin(pin: str) -> str:
@@ -405,7 +405,8 @@ def scrape_pin(session: Session, pin: str) -> None:
     doc_pathnames = retrieve_doc_page_urls(cleaned_pin)
     doc_pathnames = remove_duplicates(doc_pathnames)
 
-    db_session = Session()
+    db_session = session()
+
     try:
         for doc_pathname in doc_pathnames:
             doc_data = scrape_doc_page(doc_pathname)
@@ -414,14 +415,14 @@ def scrape_pin(session: Session, pin: str) -> None:
 
         db_session.commit()
 
-        with open("data/completed_pins.csv", "a", newline="") as file:
-            file.write(f"{pin}\n")
-            file.flush()
-
+        logger.info(
+            f"Successfully committed write for document {doc_data['doc_info']['document_number']}"
+        )
     except Exception as e:
         db_session.rollback()
         logger.error(f"Error processing PIN {pin}: {e}")
         return
+
     finally:
         db_session.close()
 
@@ -439,3 +440,7 @@ if __name__ == "__main__":
 
     for pin in pins:
         scrape_pin(SessionLocal, pin)
+        with open("data/completed_pins.csv", "a", newline="") as file:
+            file.write(f"{pin}\n")
+            file.flush()
+        logger.info(f"Finished scraping and loading data for PIN: {pin}")
