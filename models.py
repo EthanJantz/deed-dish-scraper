@@ -20,7 +20,7 @@ class Document(Base):
     pin: Mapped[str] = mapped_column(String(14))
     date_executed: Mapped[Optional[Date]] = mapped_column(Date)
     date_recorded: Mapped[Date] = mapped_column(Date)
-    num_pages: Mapped[int] = mapped_column(Integer)
+    num_pages: Mapped[Optional[int]] = mapped_column(Integer)
     address: Mapped[Optional[str]] = mapped_column(String(255))
     doc_type: Mapped[str] = mapped_column(String(50))
     consideration_amount: Mapped[Optional[str]] = mapped_column(String(50))

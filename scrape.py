@@ -15,7 +15,7 @@ engine = create_engine(f"{os.environ.get('DB_URL')}", echo=True)
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(
-    filename=os.path.curdir + "/scrape.log",
+    filename=os.path.curdir + "/logs/scrape.log",
     format="%(asctime)s %(message)s",
     encoding="utf-8",
     level=logging.INFO,
@@ -397,6 +397,35 @@ def get_pins_to_scrape():
     return pins
 
 
+def scrape_pin(session: Session, pin: str) -> None:
+    logger.info(f"Querying PIN: {pin}")
+
+    cleaned_pin = clean_pin(pin)
+
+    doc_pathnames = retrieve_doc_page_urls(cleaned_pin)
+    doc_pathnames = remove_duplicates(doc_pathnames)
+
+    db_session = Session()
+    try:
+        for doc_pathname in doc_pathnames:
+            doc_data = scrape_doc_page(doc_pathname)
+            if doc_data:
+                insert_content(db_session, pin, doc_data)
+
+        db_session.commit()
+
+        with open("data/completed_pins.csv", "a", newline="") as file:
+            file.write(f"{pin}\n")
+            file.flush()
+
+    except Exception as e:
+        db_session.rollback()
+        logger.error(f"Error processing PIN {pin}: {e}")
+        return
+    finally:
+        db_session.close()
+
+
 if __name__ == "__main__":
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
@@ -409,30 +438,4 @@ if __name__ == "__main__":
     pins = get_pins_to_scrape()
 
     for pin in pins:
-        logger.info(f"Querying PIN: {pin}")
-
-        cleaned_pin = clean_pin(pin)
-
-        doc_pathnames = retrieve_doc_page_urls(cleaned_pin)
-        doc_pathnames = remove_duplicates(doc_pathnames)
-
-        db_session = SessionLocal()
-        try:
-            for doc_pathname in doc_pathnames:
-                doc_data = scrape_doc_page(doc_pathname)
-                if doc_data:
-                    insert_content(db_session, pin, doc_data)
-
-            db_session.commit()
-
-            with open("data/completed_pins.csv", "a", newline="") as file:
-                file.write(f"{pin}\n")
-                file.flush()
-
-        except Exception as e:
-            db_session.rollback()
-            logger.error(f"Error processing PIN {pin}: {e}")
-            continue
-
-        finally:
-            db_session.close()
+        scrape_pin(SessionLocal, pin)
