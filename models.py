@@ -1,7 +1,7 @@
-from typing import Optional
+from typing import Optional, List
 from sqlalchemy import ForeignKey, String, CheckConstraint, UniqueConstraint
 from sqlalchemy.types import Date, Integer
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
 class Base(DeclarativeBase):
@@ -26,6 +26,18 @@ class Document(PinFormatMixin, Base):
     """
 
     __tablename__ = "documents"
+
+    entities: Mapped[List["Entity"]] = relationship(
+        back_populates="document", cascade="all, delete-orphan"
+    )
+    pins: Mapped[List["Pin"]] = relationship(
+        back_populates="document", cascade="all, delete-orphan"
+    )
+    prior_docs: Mapped[List["PriorDoc"]] = relationship(
+        back_populates="document",
+        foreign_keys="PriorDoc.doc_num",
+        cascade="all, delete-orphan",
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     doc_num: Mapped[str] = mapped_column(String(255))
@@ -56,6 +68,8 @@ class Entity(PinFormatMixin, Base):
 
     __tablename__ = "entities"
 
+    document: Mapped["Document"] = relationship(back_populates="entities")
+
     id: Mapped[int] = mapped_column(primary_key=True)
     doc_num: Mapped[str] = mapped_column(ForeignKey("documents.doc_num"))
     pin: Mapped[str] = mapped_column(String(14), index=True)
@@ -82,6 +96,8 @@ class Pin(PinFormatMixin, Base):
 
     __tablename__ = "pins"
 
+    document: Mapped["Document"] = relationship(back_populates="pins")
+
     id: Mapped[int] = mapped_column(primary_key=True)
     pin: Mapped[str] = mapped_column(String(14), index=True)
     doc_num: Mapped[str] = mapped_column(ForeignKey("documents.doc_num"))
@@ -105,6 +121,10 @@ class PriorDoc(Base):
     """
 
     __tablename__ = "prior_docs"
+
+    document: Mapped["Document"] = relationship(
+        back_populates="prior_docs", foreign_keys="PriorDoc.doc_num"
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     doc_num: Mapped[str] = mapped_column(ForeignKey("documents.doc_num"))
