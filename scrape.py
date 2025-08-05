@@ -296,6 +296,7 @@ def insert_content(session: Session, pin: str, content: dict) -> None:
         None
     """
     doc_num = content["doc_info"]["document_number"]
+    pin = clean_pin(pin)
 
     try:
         date_executed_str = content["doc_info"].get("date_executed")
@@ -378,8 +379,8 @@ def get_pins_to_scrape():
     else:
         pins = [
             "17-29-304-001-0000",  # Park
-            "17-05-115-085-0000",  # Starsiak Clothing
-            "16-10-421-053-0000",  # Hotel Guyon
+            # "17-05-115-085-0000",  # Starsiak Clothing
+            # "16-10-421-053-0000",  # Hotel Guyon
         ]
 
     # remove pins that have already been scraped

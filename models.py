@@ -28,15 +28,20 @@ class Document(PinFormatMixin, Base):
     __tablename__ = "documents"
 
     entities: Mapped[List["Entity"]] = relationship(
-        back_populates="document", cascade="all, delete-orphan"
+        back_populates="document",
+        cascade="all, delete-orphan",
+        primaryjoin="Document.doc_num == Entity.doc_num",
     )
     pins: Mapped[List["Pin"]] = relationship(
-        back_populates="document", cascade="all, delete-orphan"
+        back_populates="document",
+        cascade="all, delete-orphan",
+        primaryjoin="Document.doc_num == Pin.doc_num",
     )
     prior_docs: Mapped[List["PriorDoc"]] = relationship(
         back_populates="document",
         foreign_keys="PriorDoc.doc_num",
         cascade="all, delete-orphan",
+        primaryjoin="Document.doc_num == PriorDoc.doc_num",
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -45,14 +50,14 @@ class Document(PinFormatMixin, Base):
     date_executed: Mapped[Optional[Date]] = mapped_column(Date, nullable=True)
     date_recorded: Mapped[Date] = mapped_column(Date)
     num_pages: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    address: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    address: Mapped[Optional[str]] = mapped_column(String(2048), nullable=True)
     doc_type: Mapped[str] = mapped_column(String(50))
     consideration_amount: Mapped[Optional[str]] = mapped_column(
         String(50), nullable=True
     )
     pdf_url: Mapped[str] = mapped_column(String(2048))
 
-    __table_args__ = UniqueConstraint("doc_num", name="uix_doc_num")
+    __table_args__ = (UniqueConstraint("doc_num", name="uix_doc_num"),)
 
     def __repr__(self) -> str:
         return f"Document(doc_num={self.doc_num!r}, pin={self.pin!r}, date_executed={self.date_executed!r}, \
@@ -68,7 +73,10 @@ class Entity(PinFormatMixin, Base):
 
     __tablename__ = "entities"
 
-    document: Mapped["Document"] = relationship(back_populates="entities")
+    document: Mapped["Document"] = relationship(
+        back_populates="entities",
+        primaryjoin="Entity.doc_num == Document.doc_num",
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     doc_num: Mapped[str] = mapped_column(ForeignKey("documents.doc_num"))
@@ -96,7 +104,10 @@ class Pin(PinFormatMixin, Base):
 
     __tablename__ = "pins"
 
-    document: Mapped["Document"] = relationship(back_populates="pins")
+    document: Mapped["Document"] = relationship(
+        back_populates="pins",
+        primaryjoin="Pin.doc_num == Document.doc_num",
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     pin: Mapped[str] = mapped_column(String(14), index=True)
@@ -123,14 +134,16 @@ class PriorDoc(Base):
     __tablename__ = "prior_docs"
 
     document: Mapped["Document"] = relationship(
-        back_populates="prior_docs", foreign_keys="PriorDoc.doc_num"
+        back_populates="prior_docs",
+        foreign_keys="PriorDoc.doc_num",
+        primaryjoin="PriorDoc.doc_num == Document.doc_num",
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     doc_num: Mapped[str] = mapped_column(ForeignKey("documents.doc_num"))
     prior_doc_num: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
 
-    __table_args__ = UniqueConstraint("doc_num", "prior_doc_num")
+    __table_args__ = (UniqueConstraint("doc_num", "prior_doc_num"),)
 
     def __repr__(self) -> str:
         return f"PriorDoc(id={self.id!r}, doc_num={self.doc_num!r}, prior_doc_num={self.prior_doc_num!r})"
