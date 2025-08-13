@@ -1,25 +1,44 @@
 """Tool to scrape the Cook County Recorder of Deeds site for document metadata"""
 
+import csv
+import logging
 import os
 import re
-import csv
 from datetime import datetime
-import logging
-from bs4 import BeautifulSoup
+
 import requests
+import structlog
+from bs4 import BeautifulSoup
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
+
 from models import Base, Document, Entity, Pin, PriorDoc
 
 engine = create_engine(f"{os.environ.get('DB_URL')}", echo=True)
 
-logger = logging.getLogger(__name__)
+filename = os.path.curdir + "/logs/scrape.log"
 logging.basicConfig(
-    filename=os.path.curdir + "/logs/scrape.log",
-    format="%(asctime)s %(message)s",
+    # format="%(asctime)s %(message)s",
+    handlers=[logging.FileHandler(filename), logging.StreamHandler()],
     encoding="utf-8",
     level=logging.INFO,
 )
+structlog.configure(
+    processors=[
+        structlog.contextvars.merge_contextvars,
+        structlog.processors.add_log_level,
+        structlog.processors.StackInfoRenderer(),
+        structlog.dev.set_exc_info,
+        structlog.processors.TimeStamper(fmt="%Y-%m-%d %H:%M:%S", utc=False),
+        structlog.dev.ConsoleRenderer(),
+    ],
+    logger_factory=structlog.stdlib.LoggerFactory(),
+    wrapper_class=structlog.make_filtering_bound_logger(logging.NOTSET),
+    context_class=dict,
+    cache_logger_on_first_use=False,
+)
+logger = structlog.get_logger(__name__)
+
 
 BASE_URL: str = "https://crs.cookcountyclerkil.gov"
 URL_TEMPLATES: list = [
@@ -90,14 +109,14 @@ def retrieve_doc_page_urls(pin: str) -> list[str]:
 
     url_pathnames = []
     for url in URL_TEMPLATES:
-        logger.info(f"Querying {url.format(pin=pin)}")
+        logger.info("Querying url...", url=url.format(pin=pin))
         response = requests.get(url.format(pin=pin))
         soup = BeautifulSoup(response.text, features="lxml")
         url_pathnames += [x["href"] for x in soup.find_all("a", string="View")]
     return url_pathnames
 
 
-def scrape_doc_page(url_pathname: str) -> dict[str]:
+def scrape_doc_page(url_pathname: str) -> dict[str] | None:
     """
     Given an url_pathname, pulls the metadata from the document page and returns it
 
@@ -109,7 +128,7 @@ def scrape_doc_page(url_pathname: str) -> dict[str]:
     """
     try:
         url = BASE_URL + url_pathname
-        logger.info(f"Scraping {url} ...")
+        logger.info("Scraping url...", url=url)
         response = requests.get(url)
         assert response.status_code == 200, f"Document URL at {
             url
@@ -137,7 +156,7 @@ def scrape_doc_page(url_pathname: str) -> dict[str]:
         return content
 
     except AssertionError as e:
-        logger.error(e)
+        logger.error("Error scraping document page", error=e)
         return None
 
 
@@ -280,6 +299,7 @@ def create_tables():
     Returns:
         None
     """
+    Base.metadata.drop_all(engine)
     Base.metadata.create_all(engine)
 
 
@@ -362,10 +382,10 @@ def insert_content(session: Session, pin: str, content: dict) -> None:
             )
             session.add(prior_doc_obj)
 
-        logger.info(f"Successfully added document data to session: {doc_num}")
+        logger.info("Successfully added document data to session", content=content)
 
     except Exception as e:
-        logger.error(f"Error inserting document {doc_num}: {e}")
+        logger.error("Error inserting document", error=e, content=content)
         raise
 
 
@@ -379,8 +399,8 @@ def get_pins_to_scrape():
     else:
         pins = [
             "17-29-304-001-0000",  # Park
-            # "17-05-115-085-0000",  # Starsiak Clothing
-            # "16-10-421-053-0000",  # Hotel Guyon
+            "17-05-115-085-0000",  # Starsiak Clothing
+            "16-10-421-053-0000",  # Hotel Guyon
         ]
 
     # remove pins that have already been scraped
@@ -399,7 +419,7 @@ def get_pins_to_scrape():
 
 
 def scrape_pin(session: Session, pin: str) -> None:
-    logger.info(f"Querying PIN: {pin}")
+    logger.info("Querying PIN", pin=pin)
 
     cleaned_pin = clean_pin(pin)
 
@@ -410,18 +430,32 @@ def scrape_pin(session: Session, pin: str) -> None:
 
     try:
         for doc_pathname in doc_pathnames:
-            doc_data = scrape_doc_page(doc_pathname)
-            if doc_data:
-                insert_content(db_session, pin, doc_data)
+            try:
+                doc_data = scrape_doc_page(doc_pathname)
+                if doc_data:
+                    insert_content(db_session, pin, doc_data)
+            except Exception as e:
+                # Log the error for the specific document and skip it
+                logger.warning(
+                    f"Skipping document {doc_pathname} for PIN {pin} due to error: {e}",
+                    doc_pathname=doc_pathname,
+                    pin=pin,
+                    error=e,
+                )
+                continue  # Move to the next document
 
+        # Commit all successfully processed documents
         db_session.commit()
 
-        logger.info(
-            f"Successfully committed write for document {doc_data['doc_info']['document_number']}"
-        )
+        # Log overall success for the PIN
+        logger.info("Successfully committed write for PIN.", pin=pin)
+
     except Exception as e:
+        # Rollback the entire session only if a general error occurs outside the document processing loop
         db_session.rollback()
-        logger.error(f"Error processing PIN {pin}: {e}")
+        logger.error(
+            "Error processing PIN (overall session rollback)", error=e, pin=pin
+        )
         return
 
     finally:
@@ -444,4 +478,4 @@ if __name__ == "__main__":
         with open("data/completed_pins.csv", "a", newline="") as file:
             file.write(f"{pin}\n")
             file.flush()
-        logger.info(f"Finished scraping and loading data for PIN: {pin}")
+        logger.info("Finished scraping and loading data for PIN", pin=pin)
