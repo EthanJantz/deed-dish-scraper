@@ -1,0 +1,8 @@
+services:
+  scraper:
+    env_file: .env
+    build: .
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    command: ["uv", "run", "python", "main.py"]
