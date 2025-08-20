@@ -227,12 +227,12 @@ def extract_prior_documents(soup: BeautifulSoup) -> list[str]:
     return prior_doc_nums
 
 
-def extract_info(soup: BeautifulSoup) -> dict[str]:
+def extract_info(soup: BeautifulSoup) -> dict[str] | list[None]:
     section_title = "Viewing Document"
 
     section_legend = soup.find(True, string=re.compile(section_title))
     if not section_legend:
-        return
+        return []
 
     info_table = section_legend.find_next("table")
     if not info_table:
@@ -247,7 +247,7 @@ def extract_info(soup: BeautifulSoup) -> dict[str]:
     return dict(zip(keys, values))
 
 
-def extract_grantor_grantee(soup: BeautifulSoup) -> dict[list[str]]:
+def extract_grantor_grantee(soup: BeautifulSoup) -> dict[list[str], list[str]]:
     def extract_table_data(section_title):
         """Helper function to extract data from a specific table section"""
         section_span = soup.find(
@@ -289,7 +289,7 @@ def extract_grantor_grantee(soup: BeautifulSoup) -> dict[list[str]]:
     return {"grantors": grantors, "grantees": grantees}
 
 
-def create_tables():
+def create_tables() -> None:
     """
     Defines and creates the table schemas using SQLAlchemy's ORM Base.metadata
 
@@ -299,7 +299,6 @@ def create_tables():
     Returns:
         None
     """
-    Base.metadata.drop_all(engine)
     Base.metadata.create_all(engine)
 
 
@@ -389,7 +388,7 @@ def insert_content(session: Session, pin: str, content: dict) -> None:
         raise
 
 
-def get_pins_to_scrape():
+def get_pins_to_scrape() -> list[str]:
     path = "data/pins.csv"
     if os.path.exists(path):
         pins = []
