@@ -1,7 +1,8 @@
-from typing import Optional, List
-from sqlalchemy import ForeignKey, String, CheckConstraint, UniqueConstraint
-from sqlalchemy.types import Date, Integer
+from typing import List, Optional
+
+from sqlalchemy import CheckConstraint, ForeignKey, String, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from sqlalchemy.types import Date, Integer
 
 
 class Base(DeclarativeBase):
@@ -14,9 +15,7 @@ class PinFormatMixin:
     exactly 14 digits long.
     """
 
-    __table_args__ = (
-        CheckConstraint("pin SIMILAR TO '[0-9]{14}'", name="ck_pin_format"),
-    )
+    __table_args__ = (CheckConstraint("pin ~ '[0-9]{14}'", name="ck_pin_format"),)
 
 
 class Document(PinFormatMixin, Base):
@@ -112,9 +111,7 @@ class Pin(PinFormatMixin, Base):
     related_pin: Mapped[str] = mapped_column(String(14), index=True)
 
     __table_args__ = (
-        CheckConstraint(
-            "related_pin SIMILAR TO '[0-9]{14}'", name="ck_related_pin_format"
-        ),
+        CheckConstraint("related_pin ~ '[0-9]{14}'", name="ck_related_pin_format"),
     )
 
     def __repr__(self) -> str:

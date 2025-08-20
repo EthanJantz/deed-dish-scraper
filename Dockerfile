@@ -3,7 +3,10 @@ WORKDIR /app
 
 COPY README.md .
 COPY models.py .
-COPY scrape.py .
+COPY database.py .
+COPY utils.py .
+COPY scraper.py .
+COPY main.py .
 COPY pyproject.toml .
 COPY uv.lock .
 
