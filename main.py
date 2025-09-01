@@ -39,8 +39,6 @@ structlog.configure(
 logger = structlog.get_logger(__name__)
 
 
-
-
 def insert_content(session: Session, pin: str, content: dict) -> None:
     """
     Inserts document metadata into database.
@@ -116,6 +114,7 @@ def insert_content(session: Session, pin: str, content: dict) -> None:
         for prior_doc_num_str in content["prior_docs"]:
             prior_doc_obj = PriorDoc(
                 doc_num=doc_num,
+                pin=pin,
                 prior_doc_num=prior_doc_num_str,
             )
             session.add(prior_doc_obj)
@@ -180,7 +179,7 @@ def scrape_pin(session: Session, pin: str) -> None:
                     pin=pin,
                     error=e,
                 )
-                continue  # Move to the next document
+                continue
 
         # Commit all successfully processed documents
         db_session.commit()

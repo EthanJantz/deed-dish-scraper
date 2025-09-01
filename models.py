@@ -56,7 +56,7 @@ class Document(PinFormatMixin, Base):
     )
     pdf_url: Mapped[str] = mapped_column(String(2048))
 
-    __table_args__ = (UniqueConstraint("doc_num", name="uix_doc_num"),)
+    __table_args__ = (UniqueConstraint("pin", "doc_num", name="uix_pin_doc_num"),)
 
     def __repr__(self) -> str:
         return f"Document(doc_num={self.doc_num!r}, pin={self.pin!r}, date_executed={self.date_executed!r}, \
@@ -118,7 +118,7 @@ class Pin(PinFormatMixin, Base):
         return f"Pin(id={self.id!r}, pin={self.pin!r}, doc_num={self.doc_num!r}, related_pin={self.related_pin!r})"
 
 
-class PriorDoc(Base):
+class PriorDoc(PinFormatMixin, Base):
     """
     The PriorDoc class defines the doc_relations table. The Cook County Recorder
     provides information about relationships between different documents, calling them prior documents.
@@ -134,7 +134,8 @@ class PriorDoc(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     doc_num: Mapped[str] = mapped_column(ForeignKey("documents.doc_num"))
+    pin: Mapped[str] = mapped_column(String(14), index=True)
     prior_doc_num: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
 
     def __repr__(self) -> str:
-        return f"PriorDoc(id={self.id!r}, doc_num={self.doc_num!r}, prior_doc_num={self.prior_doc_num!r})"
+        return f"PriorDoc(id={self.id!r}, doc_num={self.doc_num!r}, pin={self.pin!r}, prior_doc_num={self.prior_doc_num!r})"
